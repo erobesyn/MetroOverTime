@@ -3,13 +3,122 @@ title: "R Notebook MetroOverTime"
 output: html_notebook
 ---
 
-```{r}
-a <- 2+5
-a
-```
 
 ```{r}
 devtools::install_github("dkahle/ggmap")
 devtools::install_github("hadley/ggplot2")
+
+library(purrr)
+library(deldir)
+library(tidyverse)
+library(ggmap)
 ```
+
+```{r read data}
+data = read.table("https://raw.githubusercontent.com/pagepiccinini/blog/master/2016-09-27_metros/data_metros.txt", header=T, sep="\t") %>%
+  unite(geo_location, c(station, location), sep = ", ", remove = FALSE) %>%
+  separate(opened, into = c("opened_month", "opened_day", "opened_year"), sep = "/") %>%
+  mutate_geocode(geo_location, source = "google")
+```
+
+```{r}
+data
+```
+
+```{r}
+paris_map = get_googlemap(center = "Paris", maptype = "roadmap",
+                          zoom = 11, size = c(640, 420), color = "bw")
+
+berlin_map = get_googlemap(center = "Berlin", maptype = "roadmap",
+                           zoom = 10, size = c(640, 420), color = "bw")
+
+barcelona_map = get_googlemap(center = "Barcelona", maptype = "roadmap",
+                              zoom = 11, size = c(640, 420), color = "bw")
+
+prague_map = get_googlemap(center = "Prague", maptype = "roadmap",
+                           zoom = 11, size = c(640, 420), color = "bw")
+
+dubai_map = get_googlemap(center = "Dubai", maptype = "roadmap",
+                           zoom = 11, size = c(640, 420), color = "bw")
+```
+
+```{r}
+paris_map
+```
+
+```{r}
+city_plot = function(city_name, city_map){
+  ggmap(city_map, extent = "device") +
+    geom_point(data = subset(data, city == city_name), aes(x = lon, y = lat),
+               color = "#0571b0", size = 3)
+}
+
+paris.plot = city_plot("Paris", paris_map)
+paris.plot
+```
+
+```{r}
+city_plot = function(city_name, city_map){
+  ggmap(city_map, extent = "device") +
+    geom_point(data = subset(data, city == city_name), aes(x = lon, y = lat),
+               color = "#0571b0", size = 3)
+}
+
+dubai.plot = city_plot("Dubai", dubai_map)
+dubai.plot
+```
+
+# Part II
+
+```{r}
+data_deldir = data %>%
+  nest(-city, .key = location_info) %>%
+  mutate(deldir = map(location_info, function(df) deldir(df$lon, df$lat))) %>%
+  mutate(del.area = map(deldir, "del.area")) %>%
+  mutate(delsgs = map(deldir, "delsgs")) %>%
+  mutate(summary = map(deldir, "summary"))
+data_deldir
+```
+```{r}
+data_deldir_delsgs = data_deldir %>%
+  select(city, delsgs) %>%
+  unnest()
+head(data_deldir_delsgs)
+```
+
+
+```{r}
+data_deldir_cent = data_deldir %>%
+  select(city, summary) %>%
+  unnest() %>%
+  group_by(city) %>%
+  summarise(cent_x = sum(x * del.wts),
+            cent_y = sum(y * del.wts)) %>%
+  ungroup()
+data_deldir_cent
+```
+
+```{r}
+del_plot = function(city_name, city_map){
+  ggmap(city_map, extent = "device") +
+    geom_segment(data = subset(data_deldir_delsgs, city == city_name), aes(x = x1, y = y1, xend = x2, yend = y2),
+                 size = 1, color= "#92c5de") +
+    geom_point(data = subset(data, city == city_name), aes(x = lon, y = lat),
+               color = "#0571b0", size = 3) +
+    geom_point(data = subset(data_deldir_cent, city == city_name),
+               aes(x = cent_x, y = cent_y),
+               size = 6, color= "#ca0020")
+}
+
+paris_del.plot = del_plot("Paris", paris_map)
+paris_del.plot
+```
+
+
+
+
+
+
+
+
 
